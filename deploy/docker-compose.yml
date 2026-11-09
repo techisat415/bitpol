@@ -1,0 +1,28 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: bitpol
+      POSTGRES_PASSWORD: bitpol
+      POSTGRES_DB: bitpol
+    ports: ["5432:5432"]
+  redis-cluster:
+    image: bitnami/redis-cluster:7.2
+    environment:
+      ALLOW_EMPTY_PASSWORD: "yes"
+      REDIS_CLUSTER_REPLICAS: 0
+      REDIS_NODES: redis-cluster
+    ports: ["6379:6379"]
+  prometheus:
+    image: prom/prometheus:v2.54.1
+    volumes: ["./prometheus.yml:/etc/prometheus/prometheus.yml:ro"]
+    ports: ["9090:9090"]
+  engine:
+    build:
+      context: ..
+      dockerfile: deploy/Dockerfile
+    environment:
+      REDIS_CLUSTER_ADDRS: redis-cluster:6379
+      DATABASE_URL: postgres://bitpol:bitpol@postgres:5432/bitpol
+    depends_on: [postgres, redis-cluster, prometheus]
+    ports: ["8080:8080"]

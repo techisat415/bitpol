@@ -1,6 +1,6 @@
-// Package phase4 implements real-time risk propagation and Redis stream
+// Package risk implements real-time risk propagation.
 // coordination for the network contamination layer.
-package phase4
+package risk
 
 import (
 	"errors"
@@ -8,7 +8,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/techisat415/bitpol/graph"
+	"github.com/techisat415/bitpol/internal/graph"
 )
 
 var ErrWalletMissing = errors.New("wallet is not present in graph")
@@ -51,6 +51,12 @@ func NewRiskEngine(g *graph.Graph, config RiskConfig) *RiskEngine {
 		sdn:     make(map[string]struct{}),
 		flagged: make(map[string]struct{}),
 	}
+}
+
+func (e *RiskEngine) Graph() *graph.Graph { return e.graph }
+
+func (e *RiskEngine) IntrinsicRisk(address string) float64 {
+	return e.intrinsic(address)
 }
 
 func (e *RiskEngine) SetSanctioned(address string, value bool) {

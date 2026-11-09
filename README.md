@@ -4,11 +4,11 @@ Phase 1 Crypto Financial Contagion & Fraud Ring Traversal Engine.
 
 ## Components
 
-- [`sql/001_schema.sql`]: PostgreSQL 16 schema. `edges` is range-partitioned by block number and stores `raw_amount` as `NUMERIC(78,0)`, never as a floating-point value.
-- [`backfill/bigquery_to_parquet.py`]: bounded BigQuery extraction of native and ERC-20 transfers into compressed Parquet batches.
+- [`internal/storage/postgres/001_schema.sql`]: PostgreSQL 16 schema. `edges` is range-partitioned by block number and stores `raw_amount` as `NUMERIC(78,0)`, never as a floating-point value.
+- [`internal/storage/postgres/bigquery_to_parquet.py`]: bounded BigQuery extraction of native and ERC-20 transfers into compressed Parquet batches.
 - [`cmd/ingest/main.go`]: reconnecting WebSocket header subscriber, concurrent block workers, native/ERC-20 parsing, Redis pipelining, and canonical block/reorg markers.
 - [`cmd/seed/main.go`]: idempotent PostgreSQL entity upsert plus Redis sanctions set loading from an operational CSV.
-- [`graph/`]: Phase 2 thread-safe temporal multigraph and score-ordered dual-trunk traversal.
+- [`internal/graph/`]: Phase 2 thread-safe temporal multigraph and score-ordered dual-trunk traversal.
 
 ## Phase 2 traversal
 
@@ -45,8 +45,8 @@ and callers receive copied result paths.
 ```bash
 python -m venv .venv
 . .venv/bin/activate
-pip install -r backfill/requirements.txt
-python backfill/bigquery_to_parquet.py \
+pip install -r internal/storage/postgres/requirements.txt
+python internal/storage/postgres/bigquery_to_parquet.py \
   --project "$GOOGLE_CLOUD_PROJECT" \
   --start-block 19000000 --end-block 19010000 \
   --output-dir ./parquet
@@ -141,3 +141,17 @@ degree counters with a Redis transaction, invalidates affected scores, then
 recomputes the touched destination and up to three downstream hops. Messages
 are acknowledged only after successful processing, so failed work remains
 pending for operational recovery.
+
+## Phase 5 operations
+
+The Phase 5 package provides synthetic peeling, fan-out/fan-in, and cycle load
+generators; a 64-block reorg window with Redis edge rollback and score
+invalidation; REST risk and lineage endpoints; webhook dispatch at a
+configurable risk threshold; and Prometheus counters/histograms. API contracts
+are provided in OpenAPI and Protobuf form. The local Compose stack starts
+PostgreSQL, Redis, Prometheus, and the compliance API.
+
+The benchmark suite records per-request latencies and throughput. Sort its
+latency samples to obtain P50/P95/P99; the regression test enforces the
+sub-50ms P99 target on the synthetic traversal workload. Prometheus exposes
+ingestion, traversal, cache, and typology counters for production alerting.

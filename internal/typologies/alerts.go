@@ -1,4 +1,4 @@
-package phase3
+package typologies
 
 import (
 	"encoding/json"

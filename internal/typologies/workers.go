@@ -1,6 +1,6 @@
-// Package phase3 provides independent, asynchronous-friendly financial crime
+// Package typologies provides independent, asynchronous-friendly financial crime
 // detectors over the Phase 2 graph. Each detector is stateless per call.
-package phase3
+package typologies
 
 import (
 	"errors"
@@ -9,7 +9,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/techisat415/bitpol/graph"
+	"github.com/techisat415/bitpol/internal/graph"
 )
 
 var ErrTargetMissing = errors.New("target wallet is not present in graph")

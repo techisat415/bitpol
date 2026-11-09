@@ -1,4 +1,4 @@
-package phase4
+package redisstore
 
 import (
 	"context"
@@ -9,6 +9,7 @@ import (
 	"time"
 
 	"github.com/redis/go-redis/v9"
+	"github.com/techisat415/bitpol/internal/risk"
 )
 
 type ConsumerConfig struct {
@@ -44,12 +45,12 @@ func (c ConsumerConfig) defaults() ConsumerConfig {
 
 type Consumer struct {
 	store  *RedisStore
-	engine *RiskEngine
+	engine *risk.RiskEngine
 	config ConsumerConfig
 	logger *slog.Logger
 }
 
-func NewConsumer(store *RedisStore, engine *RiskEngine, config ConsumerConfig, logger *slog.Logger) *Consumer {
+func NewConsumer(store *RedisStore, engine *risk.RiskEngine, config ConsumerConfig, logger *slog.Logger) *Consumer {
 	if logger == nil {
 		logger = slog.Default()
 	}
@@ -150,7 +151,7 @@ func (c *Consumer) reevaluate(ctx context.Context, root string, hops int) error 
 			if err := c.store.SetRisk(ctx, wallet, score); err != nil {
 				return err
 			}
-			edges, _ := c.engine.graph.Outgoing(wallet, time.Time{}, time.Now())
+			edges, _ := c.engine.Graph().Outgoing(wallet, time.Time{}, time.Now())
 			for _, edge := range edges {
 				if !seen[edge.ToAddress] {
 					seen[edge.ToAddress] = true

@@ -1,0 +1,20 @@
+syntax = "proto3";
+package contagion.v1;
+
+service RiskService {
+  rpc GetRisk(GetRiskRequest) returns (RiskResponse);
+  rpc TraceLineage(TraceRequest) returns (TraceResponse);
+}
+message GetRiskRequest { string address = 1; }
+message RiskResponse {
+  string wallet = 1;
+  double score = 2;
+  double intrinsic = 3;
+  bool sanctioned = 4;
+}
+message TraceRequest { string wallet = 1; }
+message TraceResponse {
+  string wallet = 1;
+  repeated string off_ramp_exits = 2;
+  string graph_json = 3;
+}

@@ -1,11 +1,11 @@
-package phase3
+package typologies
 
 import (
 	"math/big"
 	"testing"
 	"time"
 
-	"github.com/techisat415/bitpol/graph"
+	"github.com/techisat415/bitpol/internal/graph"
 )
 
 func e(from, to string, t int64, value float64) graph.Edge {

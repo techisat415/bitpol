@@ -1,4 +1,4 @@
-package phase4
+package redisstore
 
 import (
 	"context"

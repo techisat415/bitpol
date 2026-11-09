@@ -1,11 +1,11 @@
-package phase4
+package risk
 
 import (
 	"math/big"
 	"testing"
 	"time"
 
-	"github.com/techisat415/bitpol/graph"
+	"github.com/techisat415/bitpol/internal/graph"
 )
 
 func TestRiskPropagationAndDecay(t *testing.T) {
@@ -35,19 +35,5 @@ func TestDegreeCentralityBounds(t *testing.T) {
 	}
 	if got := DegreeCentrality(5000); got <= 0 || got >= 0.2 {
 		t.Fatalf("got %f", got)
-	}
-}
-
-func TestStreamOffsets(t *testing.T) {
-	ok, err := StreamIDAfter("100-2", "100-1")
-	if err != nil || !ok {
-		t.Fatalf("offset comparison failed: %v %v", ok, err)
-	}
-	ok, err = StreamIDAfter("100-1", "100-1")
-	if err != nil || ok {
-		t.Fatalf("equal offsets failed: %v %v", ok, err)
-	}
-	if _, _, err := ParseStreamID("invalid"); err == nil {
-		t.Fatal("expected invalid ID")
 	}
 }

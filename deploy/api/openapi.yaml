@@ -1,0 +1,45 @@
+openapi: 3.0.3
+info:
+  title: Crypto Contagion Compliance API
+  version: 1.0.0
+paths:
+  /v1/wallet/{address}/risk:
+    get:
+      parameters:
+        - in: path
+          name: address
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Composite risk score
+          content:
+            application/json:
+              schema: {$ref: "#/components/schemas/RiskResponse"}
+  /v1/trace/lineage:
+    get:
+      parameters:
+        - in: query
+          name: wallet
+          required: true
+          schema: {type: string}
+      responses:
+        "200":
+          description: Forward lineage and off-ramp endpoints
+components:
+  schemas:
+    RiskResponse:
+      type: object
+      required: [wallet, score, intrinsic, sanctioned]
+      properties:
+        wallet: {type: string}
+        score: {type: number, minimum: 0, maximum: 1}
+        intrinsic: {type: number, minimum: 0, maximum: 1}
+        sanctioned: {type: boolean}
+    Alert:
+      type: object
+      required: [wallet, typology, score]
+      properties:
+        wallet: {type: string}
+        typology: {type: string}
+        score: {type: number, minimum: 0, maximum: 1}
