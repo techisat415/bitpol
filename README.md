@@ -90,3 +90,39 @@ Rows categorized `SANCTIONED_OFAC` or `MIXER` are also added to `sanctions:sdn` 
 go test ./...
 git diff --check
 ```
+
+## Phase 3 detection workers
+
+The asynchronous detection layer provides four independent algorithms:
+
+- **Peeling chains** require repeated `InDegree == 1` and `OutDegree == 2`
+  nodes. One output must retain at least 80% of the incoming USD value and
+  the other must be below 20%; short chains are rejected.
+- **Fan-out/fan-in and rings** identify branches that reconverge inside a
+  bounded time window and time-causal cycles using depth-limited DFS.
+- **Mixer correlation** treats configured deposit contracts as sinks and
+  withdrawal contracts as sources. Matching token, denomination, timing,
+  gas-price, and relayer signals produce probabilistic virtual edges only
+  above the configured confidence threshold.
+- **Backward tracing** walks incoming edges from a sink while enforcing
+  `t_in <= t_out`, returning upstream source lineages and aggregate USD value.
+
+All detector outputs can be wrapped in the stable alert envelope:
+
+```json
+{
+  "id": "MIXER_CORRELATION-1730000000000000000",
+  "type": "MIXER_CORRELATION",
+  "severity": "MEDIUM",
+  "confidence": 0.65,
+  "detected_at": "2026-11-09T12:00:00Z",
+  "addresses": ["deposit", "withdrawal"],
+  "attributes": {
+    "virtual_edge": true,
+    "reasons": ["denomination", "token", "temporal_window"]
+  },
+  "edges": []
+}
+```
+
+The envelope is suitable for Redis Streams or PostgreSQL JSONB storage.

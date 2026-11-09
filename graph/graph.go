@@ -45,6 +45,7 @@ type Node struct {
 	outDegree atomic.Uint64
 	mu        sync.RWMutex
 	outgoing  []*Edge
+	incoming  []*Edge
 }
 
 func (n *Node) InDegree() uint64  { return n.inDegree.Load() }
@@ -71,6 +72,21 @@ func (n *Node) edgesBetween(start, end time.Time) []*Edge {
 	}
 	// Copy only the slice header/backing references; Edge values remain immutable.
 	return append([]*Edge(nil), n.outgoing[first:last]...)
+}
+
+func (n *Node) incomingBetween(start, end time.Time) []*Edge {
+	n.mu.RLock()
+	defer n.mu.RUnlock()
+	first := sort.Search(len(n.incoming), func(i int) bool {
+		return !n.incoming[i].Timestamp.Before(start)
+	})
+	last := sort.Search(len(n.incoming), func(i int) bool {
+		return n.incoming[i].Timestamp.After(end)
+	})
+	if first >= last {
+		return nil
+	}
+	return append([]*Edge(nil), n.incoming[first:last]...)
 }
 
 type Graph struct {
@@ -130,6 +146,14 @@ func (g *Graph) AddEdge(input Edge) error {
 	from.mu.Unlock()
 	from.outDegree.Add(1)
 	to, _ := g.GetOrCreateNode(input.ToAddress)
+	to.mu.Lock()
+	inPosition := sort.Search(len(to.incoming), func(i int) bool {
+		return !to.incoming[i].Timestamp.Before(edge.Timestamp)
+	})
+	to.incoming = append(to.incoming, nil)
+	copy(to.incoming[inPosition+1:], to.incoming[inPosition:])
+	to.incoming[inPosition] = &edge
+	to.mu.Unlock()
 	to.inDegree.Add(1)
 	return nil
 }
@@ -148,4 +172,12 @@ func (g *Graph) Outgoing(address string, start, end time.Time) ([]*Edge, bool) {
 		return nil, false
 	}
 	return node.edgesBetween(start, end), true
+}
+
+func (g *Graph) Incoming(address string, start, end time.Time) ([]*Edge, bool) {
+	node, ok := g.Node(address)
+	if !ok {
+		return nil, false
+	}
+	return node.incomingBetween(start, end), true
 }
