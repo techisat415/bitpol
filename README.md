@@ -126,3 +126,18 @@ All detector outputs can be wrapped in the stable alert envelope:
 ```
 
 The envelope is suitable for Redis Streams or PostgreSQL JSONB storage.
+
+## Phase 4 risk caching
+
+The risk engine evaluates intrinsic sanctions or flagged-origin risk, incoming
+network contamination, logarithmic source-degree damping, and exponential
+time decay. Redis stores sanctions in `sanctions:sdn`, scores in the
+`wallet:risk_scores` hash, degrees in `wallet:degrees`, and temporal outgoing
+edges in `edges:out:<wallet>`.
+
+The stream consumer uses the `risk-engine` consumer group on
+`stream:touched_wallets`. Each worker atomically updates the edge window and
+degree counters with a Redis transaction, invalidates affected scores, then
+recomputes the touched destination and up to three downstream hops. Messages
+are acknowledged only after successful processing, so failed work remains
+pending for operational recovery.
