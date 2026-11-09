@@ -9,6 +9,7 @@ import (
 	"sort"
 	"time"
 
+	"github.com/techisat415/bitpol/internal/config"
 	"github.com/techisat415/bitpol/internal/graph"
 )
 
@@ -145,8 +146,8 @@ func DetectFanOutIn(g *graph.Graph, source string, cfg FanConfig) ([]FanPattern,
 }
 
 type RingConfig struct {
-	Start, End time.Time
-	MaxDepth   int
+	Start, End      time.Time
+	OverrideMaxHops int
 }
 
 type Ring struct {
@@ -158,36 +159,52 @@ func DetectRings(g *graph.Graph, start string, cfg RingConfig) ([]Ring, error) {
 	if _, ok := g.Node(start); !ok {
 		return nil, ErrTargetMissing
 	}
-	if cfg.MaxDepth <= 0 {
-		cfg.MaxDepth = 8
-	}
-	var rings []Ring
+	adjacency := make(map[string][]string)
+	edgeByPair := make(map[string]*graph.Edge)
+	queue := []string{start}
 	seen := map[string]bool{start: true}
-	var walk func(string, time.Time, []string, []EdgeRef)
-	walk = func(node string, previous time.Time, addresses []string, refs []EdgeRef) {
-		if len(addresses) > cfg.MaxDepth+1 {
-			return
+	depth := map[string]int{start: 0}
+	maxHops := config.MaxHops(cfg.OverrideMaxHops)
+	for len(queue) > 0 {
+		node := queue[0]
+		queue = queue[1:]
+		if depth[node] >= maxHops {
+			continue
 		}
 		outs, _ := g.Outgoing(node, cfg.Start, cfg.End)
 		for _, edge := range outs {
-			if edge.Timestamp.Before(previous) {
+			if edge.Timestamp.Before(cfg.Start) || edge.Timestamp.After(cfg.End) {
 				continue
 			}
-			ref := edgeRefs(edge)[0]
-			if edge.ToAddress == start && len(addresses) >= 3 {
-				rings = append(rings, Ring{Addresses: append(append([]string(nil), addresses...), start),
-					Edges: append(append([]EdgeRef(nil), refs...), ref)})
-				continue
+			adjacency[node] = append(adjacency[node], edge.ToAddress)
+			edgeByPair[node+"\x00"+edge.ToAddress] = edge
+			if !seen[edge.ToAddress] {
+				seen[edge.ToAddress] = true
+				depth[edge.ToAddress] = depth[node] + 1
+				queue = append(queue, edge.ToAddress)
 			}
-			if seen[edge.ToAddress] {
-				continue
-			}
-			seen[edge.ToAddress] = true
-			walk(edge.ToAddress, edge.Timestamp, append(addresses, edge.ToAddress), append(refs, ref))
-			delete(seen, edge.ToAddress)
 		}
 	}
-	walk(start, cfg.Start, []string{start}, nil)
+	var rings []Ring
+	for _, cycle := range JohnsonCycles(adjacency) {
+		if len(cycle) < 3 {
+			continue
+		}
+		var refs []EdgeRef
+		valid := true
+		for i, from := range cycle {
+			to := cycle[(i+1)%len(cycle)]
+			edge := edgeByPair[from+"\x00"+to]
+			if edge == nil || (i > 0 && edge.Timestamp.Before(refs[len(refs)-1].Timestamp)) {
+				valid = false
+				break
+			}
+			refs = append(refs, edgeRefs(edge)[0])
+		}
+		if valid {
+			rings = append(rings, Ring{Addresses: append([]string(nil), cycle...), Edges: refs})
+		}
+	}
 	return rings, nil
 }
 
@@ -259,8 +276,8 @@ func CorrelateMixer(cfg MixerConfig, deposits, withdrawals []MixerEvent) []Virtu
 }
 
 type TraceConfig struct {
-	Start, End time.Time
-	MaxDepth   int
+	Start, End      time.Time
+	OverrideMaxHops int
 }
 type Trace struct {
 	Source   string    `json:"source"`
@@ -273,9 +290,7 @@ func TraceBackward(g *graph.Graph, sink string, cfg TraceConfig) ([]Trace, error
 	if _, ok := g.Node(sink); !ok {
 		return nil, ErrTargetMissing
 	}
-	if cfg.MaxDepth <= 0 {
-		cfg.MaxDepth = 8
-	}
+	maxHops := config.MaxHops(cfg.OverrideMaxHops)
 	type state struct {
 		node    string
 		outTime time.Time
@@ -288,7 +303,7 @@ func TraceBackward(g *graph.Graph, sink string, cfg TraceConfig) ([]Trace, error
 	for len(queue) > 0 {
 		current := queue[0]
 		queue = queue[1:]
-		if current.depth >= cfg.MaxDepth || current.node == sink && current.depth > 0 {
+		if current.depth >= maxHops || current.node == sink && current.depth > 0 {
 			if len(current.refs) > 0 {
 				result = append(result, Trace{Source: current.node, Sink: sink, Edges: reverseRefs(current.refs), TotalUSD: current.total})
 			}

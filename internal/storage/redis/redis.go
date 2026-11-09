@@ -2,6 +2,7 @@ package redisstore
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"strconv"
 	"time"
@@ -19,6 +20,53 @@ const (
 type RedisStore struct {
 	Client redis.UniversalClient
 	Window time.Duration
+}
+
+type NeighborCache struct {
+	Client             redis.UniversalClient
+	HotWalletThreshold uint64
+	HotTTL             time.Duration
+	ColdTTL            time.Duration
+}
+
+func (c NeighborCache) ttl(outDegree uint64) time.Duration {
+	if outDegree >= c.HotWalletThreshold {
+		if c.HotTTL > 0 {
+			return c.HotTTL
+		}
+		return 30 * time.Second
+	}
+	if c.ColdTTL > 0 {
+		return c.ColdTTL
+	}
+	return 10 * time.Minute
+}
+
+func (c NeighborCache) TTL(outDegree uint64) time.Duration {
+	return c.ttl(outDegree)
+}
+
+func (c NeighborCache) Set(ctx context.Context, wallet string, neighbors []string, outDegree uint64) error {
+	if wallet == "" {
+		return fmt.Errorf("wallet is required")
+	}
+	payload, err := json.Marshal(neighbors)
+	if err != nil {
+		return fmt.Errorf("marshal neighbors: %w", err)
+	}
+	return c.Client.Set(ctx, "neighbors:"+wallet, payload, c.ttl(outDegree)).Err()
+}
+
+func (c NeighborCache) Get(ctx context.Context, wallet string) ([]string, error) {
+	payload, err := c.Client.Get(ctx, "neighbors:"+wallet).Bytes()
+	if err != nil {
+		return nil, err
+	}
+	var neighbors []string
+	if err := json.Unmarshal(payload, &neighbors); err != nil {
+		return nil, fmt.Errorf("decode neighbors: %w", err)
+	}
+	return neighbors, nil
 }
 
 func (s *RedisStore) riskKey(wallet string) string { return wallet }

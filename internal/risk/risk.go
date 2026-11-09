@@ -8,16 +8,71 @@ import (
 	"sync"
 	"time"
 
+	"github.com/techisat415/bitpol/internal/config"
 	"github.com/techisat415/bitpol/internal/graph"
 )
 
 var ErrWalletMissing = errors.New("wallet is not present in graph")
 
 type RiskConfig struct {
-	Lambda    float64
-	MaxHops   int
-	Now       func() time.Time
-	PathScore func(*graph.Edge) float64
+	Lambda            float64
+	MaxHops           int
+	Now               func() time.Time
+	PathScore         func(*graph.Edge) float64
+	VelocityWindow    time.Duration
+	VelocityThreshold float64
+	VelocityBoost     float64
+}
+
+func (e *RiskEngine) velocityMultiplier(address string, now time.Time) float64 {
+	if e.config.VelocityWindow <= 0 || e.config.VelocityThreshold <= 0 {
+		return 1
+	}
+	edges, _ := e.graph.Outgoing(address, now.Add(-e.config.VelocityWindow), now)
+	var volume float64
+	for _, edge := range edges {
+		if edge.USDValue > 0 {
+			volume += edge.USDValue
+		}
+	}
+	velocity := volume / e.config.VelocityWindow.Seconds()
+	if velocity <= e.config.VelocityThreshold {
+		return 1
+	}
+	boost := e.config.VelocityBoost
+	if boost <= 0 {
+		boost = 1
+	}
+	return VelocityMultiplier(velocity, e.config.VelocityThreshold, boost)
+}
+
+// VelocityMultiplier implements the rapid-flow boost in
+// R = BaseRisk * DistanceDamping * TimeDecay * VelocityMultiplier.
+func VelocityMultiplier(velocity, threshold, boost float64) float64 {
+	if threshold <= 0 || velocity <= threshold {
+		return 1
+	}
+	if boost <= 0 {
+		boost = 1
+	}
+	return math.Exp(boost * (velocity/threshold - 1))
+}
+
+func (e *RiskEngine) Velocity(address string, now time.Time) (float64, error) {
+	if _, ok := e.graph.Node(address); !ok {
+		return 0, ErrWalletMissing
+	}
+	if e.config.VelocityWindow <= 0 {
+		return 0, nil
+	}
+	edges, _ := e.graph.Outgoing(address, now.Add(-e.config.VelocityWindow), now)
+	var volume float64
+	for _, edge := range edges {
+		if edge.USDValue > 0 {
+			volume += edge.USDValue
+		}
+	}
+	return volume / e.config.VelocityWindow.Seconds(), nil
 }
 
 func (c RiskConfig) defaults() RiskConfig {
@@ -25,7 +80,7 @@ func (c RiskConfig) defaults() RiskConfig {
 		c.Lambda = 0.000001
 	}
 	if c.MaxHops <= 0 {
-		c.MaxHops = 3
+		c.MaxHops = config.DefaultMaxHops
 	}
 	if c.Now == nil {
 		c.Now = time.Now
@@ -94,10 +149,14 @@ func (e *RiskEngine) intrinsic(address string) float64 {
 // Score computes R(w), recursively evaluating incoming edges up to MaxHops.
 // The active set prevents cyclic paths from recursively amplifying a score.
 func (e *RiskEngine) Score(address string) (float64, error) {
+	return e.ScoreWithHops(address, 0)
+}
+
+func (e *RiskEngine) ScoreWithHops(address string, overrideMaxHops int) (float64, error) {
 	if _, ok := e.graph.Node(address); !ok {
 		return 0, ErrWalletMissing
 	}
-	return e.score(address, e.config.MaxHops, make(map[string]bool)), nil
+	return e.score(address, config.MaxHops(overrideMaxHops), make(map[string]bool)), nil
 }
 
 func (e *RiskEngine) score(address string, hops int, active map[string]bool) float64 {
@@ -121,7 +180,8 @@ func (e *RiskEngine) score(address string, hops int, active map[string]bool) flo
 		if pathScore < 0 {
 			pathScore = 0
 		}
-		risk += e.score(edge.FromAddress, hops-1, active) * pathScore * centrality * decay
+		risk += e.score(edge.FromAddress, hops-1, active) * pathScore * centrality * decay *
+			e.velocityMultiplier(edge.FromAddress, now)
 		if risk >= 1 {
 			return 1
 		}

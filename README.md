@@ -155,3 +155,18 @@ The benchmark suite records per-request latencies and throughput. Sort its
 latency samples to obtain P50/P95/P99; the regression test enforces the
 sub-50ms P99 target on the synthetic traversal workload. Prometheus exposes
 ingestion, traversal, cache, and typology counters for production alerting.
+
+Johnson cycle detection operates on candidate subgraphs exposed through the
+cycle endpoint. It first finds strongly connected components, then enumerates
+elementary cycles with blocked/unblocked sets in `O((V+E)(c+1))`, where `c`
+is the number of cycles.
+
+Risk propagation uses a centralized default of four hops. Approved deep
+forensic sweeps can use the explicit `ScoreWithHops` or `TraverseWithHops`
+override. Velocity is calculated as USD volume per configured window (15
+minutes is a typical setting) and applies an exponential multiplier only above
+the configured threshold.
+
+Redis adjacency caching uses JSON neighbor lists with shorter TTLs for
+high-degree wallets. The deployment Redis configuration enables
+`maxmemory 2gb` and `maxmemory-policy allkeys-lru`.

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -13,6 +14,7 @@ import (
 	"github.com/techisat415/bitpol/internal/metrics"
 	"github.com/techisat415/bitpol/internal/risk"
 	redisstore "github.com/techisat415/bitpol/internal/storage/redis"
+	"github.com/techisat415/bitpol/internal/typologies"
 )
 
 type API struct {
@@ -38,10 +40,31 @@ func (a *API) Handler() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/v1/wallet/", a.risk)
 	mux.HandleFunc("/v1/trace/lineage", a.trace)
+	mux.HandleFunc("/v1/trace/cycles", a.cycles)
 	if a.Metrics != nil {
 		mux.Handle("/metrics", metrics.Handler(prometheus.DefaultGatherer))
 	}
 	return mux
+}
+
+func (a *API) cycles(w http.ResponseWriter, r *http.Request) {
+	wallet := r.URL.Query().Get("wallet")
+	if wallet == "" || a.Engine == nil {
+		http.Error(w, "wallet is required", http.StatusBadRequest)
+		return
+	}
+	start := time.Now()
+	rings, err := typologies.DetectRings(a.Engine.Graph(), wallet, typologies.RingConfig{
+		Start: time.Unix(0, 0), End: time.Now(),
+	})
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusNotFound)
+		return
+	}
+	if a.Metrics != nil {
+		a.Metrics.TraversalDuration.WithLabelValues("cycle").Observe(time.Since(start).Seconds())
+	}
+	writeJSON(w, map[string]any{"wallet": wallet, "cycles": rings})
 }
 
 func (a *API) risk(w http.ResponseWriter, r *http.Request) {
@@ -77,10 +100,26 @@ func (a *API) trace(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	start := time.Now()
-	result, err := a.Engine.Graph().Traverse(wallet, graph.Options{
-		StartTime: time.Unix(0, 0), EndTime: time.Now(), MaxDepth: 8,
+	maxHops := 0
+	if raw := r.URL.Query().Get("max_hops"); raw != "" {
+		parsed, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || parsed <= 0 {
+			http.Error(w, "max_hops must be a positive integer", http.StatusBadRequest)
+			return
+		}
+		maxHops = parsed
+	}
+	options := graph.Options{
+		StartTime: time.Unix(0, 0), EndTime: time.Now(),
 		MinUSDValue: 0.01,
-	}, nil)
+	}
+	var result graph.Result
+	var err error
+	if maxHops > 0 {
+		result, err = a.Engine.Graph().TraverseWithHops(wallet, options, maxHops, nil)
+	} else {
+		result, err = a.Engine.Graph().Traverse(wallet, options, nil)
+	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusNotFound)
 		return

@@ -56,4 +56,21 @@ func TestMixerConfidence(t *testing.T) {
 	if len(got) != 1 || got[0].Confidence <= .05 {
 		t.Fatalf("mixer matches=%+v", got)
 	}
+
+}
+
+func TestJohnsonCyclesReturnsElementaryCycles(t *testing.T) {
+	cycles := JohnsonCycles(map[string][]string{
+		"a": {"b", "c"},
+		"b": {"a", "c"},
+		"c": {"a"},
+	})
+	if len(cycles) != 3 {
+		t.Fatalf("expected 3 elementary cycles, got %d: %+v", len(cycles), cycles)
+	}
+	for _, cycle := range cycles {
+		if len(cycle) < 2 {
+			t.Fatalf("invalid cycle: %+v", cycle)
+		}
+	}
 }

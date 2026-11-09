@@ -6,6 +6,8 @@ import (
 	"math/big"
 	"sync"
 	"time"
+
+	"github.com/techisat415/bitpol/internal/config"
 )
 
 type Options struct {
@@ -22,7 +24,7 @@ type Options struct {
 
 func (o Options) withDefaults() Options {
 	if o.MaxDepth <= 0 {
-		o.MaxDepth = 8
+		o.MaxDepth = config.DefaultMaxHops
 	}
 	if o.MinUSDValue <= 0 {
 		o.MinUSDValue = 1000
@@ -117,9 +119,11 @@ func (g *Graph) Traverse(start string, options Options, logger *slog.Logger) (Re
 	if logger == nil {
 		logger = slog.Default()
 	}
+
 	if _, ok := g.Node(start); !ok {
 		return Result{}, ErrInvalidAddress
 	}
+
 	result := Result{}
 	queue := &stateHeap{}
 	heap.Init(queue)
@@ -194,6 +198,11 @@ func (g *Graph) Traverse(start string, options Options, logger *slog.Logger) (Re
 		releaseState(current)
 	}
 	return result, nil
+}
+
+func (g *Graph) TraverseWithHops(start string, options Options, overrideMaxHops int, logger *slog.Logger) (Result, error) {
+	options.MaxDepth = config.MaxHops(overrideMaxHops)
+	return g.Traverse(start, options, logger)
 }
 
 type flowClass uint8
